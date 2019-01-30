@@ -3,8 +3,20 @@ import numpy as np
 import vector_data as vd
 import pandas as pd
 import config
+from random import shuffle
 
 LSTM = True
+KEY_WORD = False
+FIRST = True
+
+max_len = vd.max_len
+EMBEDDING_DIM = vd.EMBEDDING_DIM
+
+classfication_data_file = 'F:\\Python\\NLP\\input.npy'
+classfication_target_file = 'F:\\Python\\NLP\\target.npy'
+
+kw_data_file = 'F:\\Python\\NLP\\keyword\\kw_input_50w.npy'
+kw_target_file = 'F:\\Python\\NLP\\keyword\\kw_target_50w.npy'
 
 class DataHelper:
     def __init__(self, path):
@@ -14,7 +26,11 @@ class DataHelper:
         self.train_length = 0
         self.length = 0
         if LSTM:
-            self.__get_LSTM_data()
+            if KEY_WORD:
+                self.tag_count = 0
+                self.__get_KeyWord_data()
+            else:
+                self.__get_LSTM_data()
         else:
             self.__get_data()
         self.mask_x = []
@@ -37,33 +53,83 @@ class DataHelper:
             else:
                 self.mask_x[0:, i] = 1
 
+    def __get_KeyWord_data(self):
+        if FIRST:
+            dict = {}
+            w2v = vd.WordVector()
+            one_tag = []
+            count = 0
+            tag_count = 0
+            with open(self.__path, 'r', encoding='UTF-8') as rf:
+                line = rf.readline().strip('\n').split(' ')
+                self.tag_count = len(line)
+                for i in range(self.tag_count):
+                    label = np.zeros(self.tag_count)
+                    label[i] = 1
+                    dict[line[i].lower()] = label
+                line = rf.readline().strip('\n').split(' ')
+                word = line[0:len(line):2]
+                tag = line[1:len(line):2]
+
+                while line != ['']:
+                    count += 1
+                    if count % 100000 == 0:
+                        print(count)
+                    for j in range(max_len):
+                        if j < len(tag):
+                            one_tag.append(dict[tag[j].lower()])
+                        else:
+                            one_tag.append(np.zeros(self.tag_count))
+                    self.__data.append(w2v.get_each_word2vec(' '.join(word)))
+                    self.__target.append(one_tag)
+                    one_tag = []
+                    line = rf.readline().strip('\n').split(' ')
+                    word = line[0:len(line):2]
+                    tag = line[1:len(line):2]
+            self.length = len(self.__data)
+            print(self.length)
+            np.save(kw_data_file, self.__data)
+            np.save(kw_target_file, self.__target)
+        else:
+            with open(self.__path, 'r', encoding='UTF-8') as rf:
+                line = rf.readline().strip('\n').split(' ')
+                self.tag_count = len(line)
+            self.__data = np.load(kw_data_file)
+            self.__target = np.load(kw_target_file)
+            self.length = len(self.__data)
+
     def __get_LSTM_data(self):
-        reader = pd.read_csv(self.__path, iterator=True, encoding='UTF-8')
-        loop = True
-        chunkSize = 500000
-        chunks = []
-        while loop:
-            try:
-                chunk = reader.get_chunk(chunkSize)
-                chunks.append(chunk)
-            except StopIteration:
-                loop = False
-                print("Iteration is stopped.")
-        df = pd.concat(chunks, ignore_index=True)
-        self.length = df.shape[0]
-        w2v = vd.WordVector()
-        for index in range(df.shape[0]):
-            if index % 100000 == 0:
-                print(index)
-            label = np.zeros(9)
-            words = df.iloc[index].tolist()
-            wc = vd.word_cut(words[0])
-            #self.mask_x.append(self.__generate_mask(wc))
-            self.__data.append(w2v.get_each_word2vec(wc))
-            label[int(words[-1])] = 1
-            self.__target.append(label)
-
-
+        if FIRST:
+            reader = pd.read_csv(self.__path, iterator=True, encoding='UTF-8')
+            loop = True
+            chunkSize = 500000
+            chunks = []
+            while loop:
+                try:
+                    chunk = reader.get_chunk(chunkSize)
+                    chunks.append(chunk)
+                except StopIteration:
+                    loop = False
+                    print("Iteration is stopped.")
+            df = pd.concat(chunks, ignore_index=True)
+            self.length = df.shape[0]
+            w2v = vd.WordVector()
+            for index in range(df.shape[0]):
+                if index % 100000 == 0:
+                    print(index)
+                label = np.zeros(9)
+                words = df.iloc[index].tolist()
+                wc = vd.word_cut(words[0])
+                #self.mask_x.append(self.__generate_mask(wc))
+                self.__data.append(w2v.get_each_word2vec(wc))
+                label[int(words[-1])] = 1
+                self.__target.append(label)
+            #np.save(classfication_data_file, self.__data)
+            #np.save(classfication_target_file, self.__target)
+        else:
+            self.__data = np.load(classfication_data_file)
+            self.__target = np.load(classfication_target_file)
+            self.length = len(self.__data)
 
     def __get_data(self):
         reader = pd.read_csv(self.__path, iterator=True, encoding='UTF-8')
@@ -86,7 +152,6 @@ class DataHelper:
             self.__data.append(np.array(words[:-1]))
             label[int(words[-1])] = 1
             self.__target.append(label)
-
 
     def get_data(self):
         data = []
@@ -118,31 +183,39 @@ class DataHelper:
     def split_train_validation_test(self, val_percent=0.04, test_percent=0.01):
         train_size = int(self.length * (1 - val_percent - test_percent))
         val_size = int(self.length * val_percent)
+        self.train_x = np.asarray(self.__data[:train_size], dtype=np.float32)
+        self.train_y = np.asarray(self.__target[:train_size], dtype=np.float32)
+        self.val_x = np.asarray(self.__data[train_size:train_size + val_size], dtype=np.float32)
+        self.val_y = np.asarray(self.__target[train_size:train_size + val_size], dtype=np.float32)
+        self.test_x = np.asarray(self.__data[train_size + val_size:self.length], dtype=np.float32)
+        self.test_y = np.asarray(self.__target[train_size + val_size:self.length], dtype=np.float32)
+        self.train_length = self.train_x.shape[0]
+        return (self.train_x, self.train_y), (self.val_x, self.val_y), (self.test_x, self.test_y)
 
-        self.train_x = self.__data[:train_size]
-        self.train_y = self.__target[:train_size]
-        self.val_x = np.array(self.__data[train_size:train_size + val_size])
-        self.val_y = np.array(self.__target[train_size:train_size + val_size])
-        self.test_x = np.array(self.__data[train_size + val_size:self.length])
-        self.test_y = np.array(self.__target[train_size + val_size:self.length])
-        self.train_length = len(self.train_x)
-        # return train_x, val_x, test_x, train_y, val_y, test_y
+    def shuffle_batch(self):
+        shuffle(self.train_x)
+        shuffle(self.train_y)
 
-    def next_batch(self, batch_size):
+    def next_batch(self, batch_size=100):
         self.batch_sum += batch_size
         if(self.batch_sum <= self.train_length):
-            X_train = np.array(self.train_x[self.batch_sum-batch_size:self.batch_sum])
-            Y_train = np.array(self.train_y[self.batch_sum-batch_size:self.batch_sum])
+            X_train = self.train_x[self.batch_sum-batch_size:self.batch_sum]
+            Y_train = self.train_y[self.batch_sum-batch_size:self.batch_sum]
             return X_train, Y_train
         else:
-            print("> %d,%d", self.batch_sum - batch_size, len(self.train_x))
-            X_train = np.array(self.train_x[self.batch_sum-batch_size:self.train_length])
-            Y_train = np.array(self.train_y[self.batch_sum-batch_size:self.train_length])
+            X_train = self.train_x[self.batch_sum-batch_size:self.train_length]
+            Y_train = self.train_y[self.batch_sum-batch_size:self.train_length]
             return X_train, Y_train
+
+    def next_batch_shuffle(self, batch_size=100):
+        X_train = shuffle(self.train_x[0:batch_size])
+        Y_train = shuffle(self.train_y[0:batch_size])
+        return X_train, Y_train
+
 
 
 if __name__ == '__main__':
-    dh = DataHelper('w2v_60_test.csv')
+    dh = DataHelper('F:\\Python\\NLP\\data\\poi_36w.txt')
     dh.split_train_validation_test()
     dh.next_batch(5)
     # print(dh.train_x[0])

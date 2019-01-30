@@ -1,15 +1,16 @@
 # -*- coding:UTF-8 -*-
 import numpy as np
+import config
 import gensim
 import jieba
 from gensim.models import Word2Vec, KeyedVectors
 
 #wv_path = 'word_vector.bin'
-wv_path = 'Word60.model'
-EMBEDDING_DIM = 60
+wv_path = 'F:\\Python\\NLP\\Word60.model'
+EMBEDDING_DIM = config.FLAGS.embed_dim
+max_len = config.FLAGS.max_len
+jieba.load_userdict('F:\\Python\\NLP\\user.dict')
 
-max_len = 10
-jieba.load_userdict('user.dict')
 class WordVector:
         def __init__(self, path=wv_path):
             #self.__model = KeyedVectors.load_word2vec_format(path, binary=True) #C版本加载模型，不能用于再训练
@@ -24,7 +25,7 @@ class WordVector:
             for tmp in words:
                 if word_count == max_len:
                     break
-                word2vec.append(np.asarray(self.__get_word2vec(tmp)))
+                word2vec.append(np.asarray(self.__get_word2vec(tmp), dtype=np.float16))
                 word_count += 1
 
             while word_count < max_len:
@@ -60,5 +61,6 @@ def word_cut(word):
 if __name__ == "__main__":
     w2v = WordVector(wv_path)
     jieba.load_userdict('user.dict')
-    print(word_cut('二零二八一月二十号限行C还是九'))
+    for i in range(100000):
+        print(word_cut('二零二八一月二十号限行C还是九'))
     print(w2v.get_avg_word2vec(u'春雷'))

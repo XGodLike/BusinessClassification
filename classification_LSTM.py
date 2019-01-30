@@ -111,27 +111,31 @@ def lstm_model(path):
 
     with tf.Session() as sess:
         feed_dict = {}
-
-        summary_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir, graph=sess.graph)
+        merged = tf.summary.merge_all()
+        train_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir + '/train', graph=sess.graph)
+        test_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir + '/test')
         sess.run(tf.global_variables_initializer())
         total_loss = 0.0
         for i in range(0, config.FLAGS.epoch):
             for j in range(0, n_batches):
                 X_batch, Y_batch = dh.next_batch(config.FLAGS.train_batch_size)
-                _, loss_batch = sess.run([lstm.train_op, lstm.loss], feed_dict={lstm.X: X_batch, lstm.Y: Y_batch})
+                _, loss_batch, summary = sess.run([lstm.train_op, lstm.loss, merged], feed_dict={lstm.X: X_batch, lstm.Y: Y_batch})
+                train_writer.add_summary(summary)
                 total_loss += loss_batch
                 if j % config.FLAGS.disp_freq == 0:
-                    val_acc = sess.run(lstm.acc, feed_dict={lstm.X: dh.val_x, lstm.Y: dh.val_y,lstm.mask_x:})
+                    val_acc, summary = sess.run([lstm.acc, merged], feed_dict={lstm.X: dh.val_x, lstm.Y: dh.val_y})
                     if j == 0:
                         print('epoch :{}, step: {}, train_loss: {}, val_acc: {}'.format(i, j, total_loss, val_acc))
                     else:
                         print('epoch :{}, step: {}, train_loss: {}, val_acc: {}'.format(i, j, total_loss / config.FLAGS.disp_freq, val_acc))
+                    test_writer.add_summary(summary, j)
                     total_loss = 0
             dh.batch_sum = 0
             saver.save(sess, 'ckpt/classfication_softmax.ckpt', global_step=i + 1)
         test_acc = sess.run(lstm.acc, feed_dict={lstm.X: dh.test_x, lstm.Y: dh.test_y})
         print('test accuracy: {}'.format(test_acc))
-        summary_writer.close()
+        train_writer.close()
+        test_writer.close()
 
 def softmax_model():
     # 数据输入
@@ -170,16 +174,21 @@ def softmax_model():
     saver = tf.train.Saver(max_to_keep=3)# 保存训练的中间模型
     n_batches = int(dh.train_length / config.FLAGS.train_batch_size)
     with tf.Session() as sess:
-        summary_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir, graph=sess.graph)
+        merged = tf.summary.merge_all()
+        train_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir + '/train', graph=sess.graph)
+        test_writer = tf.summary.FileWriter(logdir=config.FLAGS.log_dir + '/test')
+
         sess.run(tf.global_variables_initializer())
         total_loss = 0
         for i in range(0, config.FLAGS.epoch):
             for j in range(0, n_batches):
                 X_batch, Y_batch = dh.next_batch(config.FLAGS.train_batch_size)
-                _, loss_batch = sess.run([train_op, loss], feed_dict={x: X_batch, y: Y_batch})
+                _, loss_batch, summary = sess.run([train_op, loss, merged], feed_dict={x: X_batch, y: Y_batch})
+                train_writer.add_summary(summary, j)
                 total_loss += loss_batch
                 if j % config.FLAGS.disp_freq == 0:
-                    val_acc = sess.run(accuracy, feed_dict={x: dh.val_x, y: dh.val_y})
+                    val_acc, summary = sess.run([accuracy, merged], feed_dict={x: dh.val_x, y: dh.val_y})
+                    test_writer.add_summary(summary, j)
                     if j == 0:
                         print('epoch :{}, step: {}, train_loss: {}, val_acc: {}'.format(i, j, total_loss, val_acc))
                     else:
@@ -189,11 +198,12 @@ def softmax_model():
             saver.save(sess, 'ckpt/classfication_softmax.ckpt', global_step=i + 1)
         test_acc = sess.run(accuracy, feed_dict={x: dh.test_x, y: dh.test_y})
         print('test accuracy: {}'.format(test_acc))
-        summary_writer.close()
+        train_writer.close()
+        test_writer.close()
 
 
 if __name__ == "__main__":
     print('Start...')
-    #softmax_model()
+    softmax_model()
     #load_data('F:\\Python\\NLP\\data\\radom_10w.csv')
-    lstm_model('F:\\Python\\NLP\\data\\radom_10w.csv')
+    #lstm_model('F:\\Python\\NLP\\data\\radom_10w.csv')
